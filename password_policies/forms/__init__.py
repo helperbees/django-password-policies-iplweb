@@ -7,6 +7,8 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.core.exceptions import ObjectDoesNotExist
 from django.template import loader
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import EmailMultiAlternatives
 
 try:
     # SortedDict is deprecated as of Django 1.7 and will be removed in Django 1.9.
@@ -15,11 +17,7 @@ try:
 except ImportError:
     from django.utils.datastructures import SortedDict
 
-
-try:
-    from django.contrib.sites.models import get_current_site
-except ImportError:
-    from django.contrib.sites.shortcuts import get_current_site
+from django.contrib.sites.shortcuts import get_current_site
 
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
@@ -201,11 +199,29 @@ Validates that an active user exists with the given email address.
             raise forms.ValidationError(self.error_messages['unusable'])
         return email
 
+    def send_mail(self, subject_template_name, email_template_name,
+                  context, from_email, to_email, html_email_template_name=None):
+        """
+        Send a django.core.mail.EmailMultiAlternatives to `to_email`.
+        """
+        subject = loader.render_to_string(subject_template_name, context)
+        # Email subject *must not* contain newlines
+        subject = ''.join(subject.splitlines())
+        body = loader.render_to_string(email_template_name, context)
+
+        email_message = EmailMultiAlternatives(subject, body, from_email, [to_email])
+        if html_email_template_name is not None:
+            html_email = loader.render_to_string(html_email_template_name, context)
+            email_message.attach_alternative(html_email, 'text/html')
+
+        email_message.send()
+
     def save(self, domain_override=None,
              subject_template_name='registration/password_reset_subject.txt',
-             email_template_name='registration/password_reset_email.txt',
-             email_html_template_name='registration/password_reset_email.html',
-             use_https=False, from_email=None, request=None):
+             email_template_name='registration/password_reset_email.html',
+             token_generator=default_token_generator,
+             use_https=True, from_email=None, request=None, html_email_template_name=None,
+             extra_email_context=None):
         """
 Generates a one-use only link for resetting password and sends to the
 user.
@@ -222,8 +238,7 @@ user.
     a template directory to generate the subject of the mail.
 :arg bool use_https: Determines wether to use HTTPS while generating
     the one-use only link for resetting passwords.
-"""
-        from django.core.mail import EmailMultiAlternatives
+"""     
         context = self.get_context_data(request,
                                         domain_override,
                                         use_https)
@@ -235,16 +250,14 @@ user.
             c['email'] = user.email
             c['signature'] = var[2]
             c['timestamp'] = var[1]
-            c['uid'] = urlsafe_base64_encode(force_bytes(user.id))
+            c['uid'] = urlsafe_base64_encode(force_bytes(user.pk)).decode()
             c['user'] = user
-            subject = loader.render_to_string(subject_template_name, c)
-            # Email subject *must not* contain newlines
-            subject = ''.join(subject.splitlines())
-            email = loader.render_to_string(email_template_name, c)
-            html = loader.render_to_string(email_html_template_name, c)
-            msg = EmailMultiAlternatives(subject, email, from_email, [user.email])
-            msg.attach_alternative(html, "text/html")
-            msg.send()
+            c['token'] = token_generator.make_token(user)
+            c['protocol'] = 'https' if use_https else 'http'
+            self.send_mail(
+                subject_template_name, email_template_name, c, from_email,
+                user.email, html_email_template_name=html_email_template_name,
+            )
 
     def get_context_data(self, request, domain_override, use_https):
         """

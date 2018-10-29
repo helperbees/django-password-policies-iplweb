@@ -1,4 +1,5 @@
 from django.conf.urls import url
+from django.urls import path
 
 try:
     # patterns was deprecated in Django 1.8
@@ -28,7 +29,7 @@ urlpatterns = [
     url(r'^reset/complete/$',
         PasswordResetCompleteView.as_view(),
         name="password_reset_complete"),
-    url(r'^reset/confirm/([0-9A-Za-z_\-]+)/([0-9A-Za-z]{1,13})/([0-9A-Za-z-=_]{1,32})/$',
+    path('reset/confirm/<uidb64>/<token>/',
         PasswordResetConfirmView.as_view(),
         name="password_reset_confirm"),
     url(r'^reset/done/$',
