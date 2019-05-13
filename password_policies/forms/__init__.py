@@ -250,7 +250,7 @@ user.
             c['email'] = user.email
             c['signature'] = var[2]
             c['timestamp'] = var[1]
-            c['uid'] = urlsafe_base64_encode(force_bytes(user.pk)).decode()
+            c['uid'] = urlsafe_base64_encode(force_bytes(user.pk))
             c['user'] = user
             c['token'] = token_generator.make_token(user)
             c['protocol'] = 'https' if use_https else 'http'
